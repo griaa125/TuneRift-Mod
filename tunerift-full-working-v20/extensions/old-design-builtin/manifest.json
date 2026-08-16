@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Старый дизайн Яндекс Музыки (встроенный, ранняя инъекция)",
+  "version": "1.0.0",
+  "content_scripts": [
+    {
+      "matches": ["https://music.yandex.ru/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    }
+  ]
+}

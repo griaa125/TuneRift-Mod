@@ -1,0 +1,8 @@
+{
+  "id": "tunerift-better-info",
+  "name": "BetterInfo",
+  "description": "Добавляет больше информации о исполнителях, плейлистах и альбомах.",
+  "enabledByDefault": true,
+  "script": "script.js",
+  "style": "style.css"
+}

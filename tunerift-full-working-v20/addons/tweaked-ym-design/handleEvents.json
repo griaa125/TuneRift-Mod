@@ -1,0 +1,118 @@
+{
+    "sections": [
+        {
+            "title": "Lyrics blur",
+            "items": [
+                {
+                    "id": "enabled",
+                    "name": "Enable blur effect",
+                    "description": "Включить прогрессивное размытие строк текста.",
+                    "type": "button",
+                    "bool": true,
+                    "defaultParameter": true
+                },
+                {
+                    "id": "maxBlur",
+                    "name": "Max blur (px)",
+                    "description": "Максимальная сила размытия для самых дальних строк.",
+                    "type": "input",
+                    "input": "8",
+                    "defaultParameter": "8"
+                },
+                {
+                    "id": "blurStep",
+                    "name": "Blur per line (px)",
+                    "description": "Насколько сильнее размывается каждая следующая строка.",
+                    "type": "input",
+                    "input": "2.2",
+                    "defaultParameter": "2.2"
+                },
+                {
+                    "id": "minOpacity",
+                    "name": "Min opacity",
+                    "description": "Минимальная прозрачность дальних строк (0–1).",
+                    "type": "input",
+                    "input": "0.35",
+                    "defaultParameter": "0.35"
+                },
+                {
+                    "id": "opacityStep",
+                    "name": "Opacity fade per line",
+                    "description": "Насколько сильнее тускнеет каждая следующая строка.",
+                    "type": "input",
+                    "input": "0.12",
+                    "defaultParameter": "0.12"
+                },
+                {
+                    "id": "transitionMs",
+                    "name": "Transition (ms)",
+                    "description": "Длительность анимации при смене активной строки.",
+                    "type": "input",
+                    "input": "250",
+                    "defaultParameter": "250"
+                }
+            ]
+        },
+        {
+            "title": "Cover background",
+            "items": [
+                {
+                    "id": "coverBackgroundEnabled",
+                    "name": "Enable cover background",
+                    "description": "Фон полноэкранного плеера из обложки трека с размытием.",
+                    "type": "button",
+                    "bool": true,
+                    "defaultParameter": true
+                },
+                {
+                    "id": "coverBlur",
+                    "name": "Background blur (px)",
+                    "description": "Сила размытия фоновой обложки.",
+                    "type": "input",
+                    "input": "28",
+                    "defaultParameter": "28"
+                },
+                {
+                    "id": "coverSaturate",
+                    "name": "Background saturation",
+                    "description": "Насыщенность фона (1 = без изменений).",
+                    "type": "input",
+                    "input": "1.2",
+                    "defaultParameter": "1.2"
+                },
+                {
+                    "id": "coverOverlay",
+                    "name": "Dark overlay (0–1)",
+                    "description": "Затемнение поверх обложки для читаемости текста.",
+                    "type": "input",
+                    "input": "0.55",
+                    "defaultParameter": "0.55"
+                },
+                {
+                    "id": "coverCrossfadeMs",
+                    "name": "Cover crossfade (ms)",
+                    "description": "Плавная смена фона при переключении трека.",
+                    "type": "input",
+                    "input": "900",
+                    "defaultParameter": "900"
+                },
+                {
+                    "id": "coverMotionEnabled",
+                    "name": "Enable background motion",
+                    "description": "Медленное движение и зум фона, как в Apple Music.",
+                    "type": "button",
+                    "bool": true,
+                    "defaultParameter": true
+                },
+                {
+                    "id": "coverMotionDuration",
+                    "name": "Motion cycle (s)",
+                    "description": "Длительность одного цикла анимации движения фона.",
+                    "type": "input",
+                    "input": "26",
+                    "defaultParameter": "26"
+                }
+            ]
+        }
+    ]
+}

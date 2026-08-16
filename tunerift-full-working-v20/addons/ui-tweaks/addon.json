@@ -1,0 +1,8 @@
+{
+  "id": "ui-tweaks",
+  "name": "UI-правки под Electron",
+  "description": "Место под трафлайты, драг зона окна, скрытие блоков macOS-скачивания и Плюса, кнопка настроек приложения в профиле",
+  "enabledByDefault": true,
+  "script": "index.js",
+  "style": "style.css"
+}
