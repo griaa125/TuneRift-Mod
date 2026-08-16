@@ -1,8 +1,0 @@
-{
-  "id": "tunerift-explicit-e-mark",
-  "name": "Explicit E Mark",
-  "description": "Заменяет маркировку (!) на компактный знак E и обновляет пояснение в интерфейсе.",
-  "enabledByDefault": true,
-  "script": "index.js",
-  "style": "style.css"
-}

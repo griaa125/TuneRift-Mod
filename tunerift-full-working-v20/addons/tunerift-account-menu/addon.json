@@ -1,7 +1,0 @@
-{
-  "id": "tunerift-account-menu",
-  "name": "TuneRift Mod Menu",
-  "description": "Настройки TuneRift прямо в меню аккаунта Яндекс Музыки.",
-  "enabledByDefault": true,
-  "script": "index.js"
-}

@@ -1,7 +1,0 @@
-{
-  "id": "pulsesync-shim",
-  "name": "Совместимость с PulseSync-аддонами (эксперимент)",
-  "description": "Даёт минимальную реализацию window.pulsesyncApi, которую используют некоторые PulseSync-аддоны. Включай ТОЛЬКО если ставишь настоящие PulseSync-аддоны — без них не нужен",
-  "enabledByDefault": false,
-  "script": "index.js"
-}
