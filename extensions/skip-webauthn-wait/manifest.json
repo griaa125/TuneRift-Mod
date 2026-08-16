@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Мгновенный переход к 'войти другим способом'",
+  "version": "1.0.0",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://music.yandex.ru/*",
+        "https://passport.yandex.ru/*",
+        "https://id.yandex.ru/*",
+        "https://yandex.ru/*"
+      ],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+    "enabled": true,
+    "maxBlur": "4.5",
+    "blurStep": "0.75",
+    "minOpacity": "0.58",
+    "opacityStep": "0.08",
+    "transitionMs": "380",
+    "coverBackgroundEnabled": true,
+    "coverBlur": "28",
+    "coverSaturate": "1.2",
+    "coverOverlay": "0.55",
+    "coverCrossfadeMs": "900",
+    "coverMotionEnabled": true,
+    "coverMotionDuration": "26"
+}
