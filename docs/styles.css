@@ -250,6 +250,68 @@ h2 em {
   font-size: 0.87rem;
   line-height: 1.65;
 }
+.seo {
+  display: grid;
+  grid-template-columns: 0.16fr 1.18fr 0.66fr;
+  gap: 2rem;
+  background: #080808;
+}
+.seo > div:first-child {
+  grid-column: 2;
+}
+.seo h2 {
+  max-width: 46rem;
+  margin: 1.05rem 0 0;
+  color: #aeaeae;
+  font: 600 clamp(2.15rem, 4vw, 4.8rem) / 0.95 var(--display);
+  letter-spacing: -0.075em;
+}
+.seo-copy {
+  grid-column: 2 / 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr);
+  gap: 2rem clamp(2rem, 6vw, 6rem);
+  align-items: start;
+  margin-top: 2rem;
+}
+.seo-copy > p {
+  max-width: 33rem;
+  margin: 0;
+  color: #979797;
+  font-size: 0.93rem;
+  line-height: 1.78;
+}
+.seo-copy strong {
+  color: var(--paper);
+  font-weight: 600;
+}
+.seo-copy ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: howto;
+}
+.seo-copy li {
+  counter-increment: howto;
+  display: grid;
+  grid-template-columns: 1.55rem 1fr;
+  gap: 0.6rem;
+  color: #888;
+  font-size: 0.78rem;
+  line-height: 1.62;
+}
+.seo-copy li::before {
+  content: "0" counter(howto);
+  color: var(--paper);
+  font: 500 0.55rem/1.9 var(--mono);
+}
+.seo-copy .secondary-action {
+  grid-column: 1;
+  justify-self: start;
+}
 .section-head {
   display: grid;
   grid-template-columns: 1fr 0.5fr;
@@ -520,6 +582,16 @@ footer {
   .statement {
     grid-template-columns: 0.14fr 1fr;
   }
+  .seo {
+    grid-template-columns: 0.14fr 1fr;
+  }
+  .seo > div:first-child {
+    grid-column: 2;
+  }
+  .seo-copy {
+    grid-column: 2;
+    grid-template-columns: 1fr;
+  }
   .side-note {
     grid-column: 2;
     margin-top: 1rem;
@@ -607,6 +679,19 @@ footer {
   }
   .statement {
     gap: 1.25rem;
+  }
+  .seo {
+    gap: 1.25rem;
+  }
+  .seo h2 {
+    font-size: clamp(2.35rem, 10vw, 3.8rem);
+  }
+  .seo-copy {
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+  .seo-copy > p {
+    font-size: 0.87rem;
   }
   .statement h2,
   .section-head h2,
