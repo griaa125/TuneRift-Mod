@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "author": "nelifs",
     "type": "script",
+    "enabledByDefault": false,
     "image": "image.png",
     "banner": "banner.png",
     "libraryLogo": "",
@@ -15,7 +16,9 @@
         "player",
         "visual"
     ],
-    "dependencies": [],
+    "dependencies": [
+        "pulsesync-shim"
+    ],
     "conflictsWith": [],
     "allowedUrls": [],
     "supportedVersions": [],

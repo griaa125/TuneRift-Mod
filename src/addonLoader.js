@@ -15,9 +15,67 @@ function normalizeManifest(raw, dirName) {
     name: raw.name || dirName,
     description: raw.description || '',
     enabledByDefault: raw.enabledByDefault !== undefined ? !!raw.enabledByDefault : false, // pulsesync-аддоны по умолчанию выключены — включаются осознанно
+    forceDisabled: raw.forceDisabled === true,
+    dependencies: Array.isArray(raw.dependencies)
+      ? raw.dependencies.map(dependency => typeof dependency === 'string' ? dependency : dependency?.id).filter(Boolean)
+      : [],
     script: raw.script || null,
     style: raw.style || raw.css || null
   };
+}
+
+function resolveEnabledAddonIds(manifests, storedState) {
+  const byId = new Map(manifests.map(manifest => [manifest.id, manifest]));
+  const enabledIds = new Set(manifests
+    .filter(manifest => !manifest.forceDisabled && (storedState.hasOwnProperty(manifest.id)
+      ? storedState[manifest.id]
+      : manifest.enabledByDefault))
+    .map(manifest => manifest.id));
+  const queue = [...enabledIds];
+
+  while (queue.length) {
+    const manifest = byId.get(queue.shift());
+    for (const dependencyId of manifest?.dependencies || []) {
+      if (!byId.has(dependencyId)) {
+        console.warn(`[addons] ${manifest.id}: зависимость ${dependencyId} не найдена`);
+        continue;
+      }
+      if (byId.get(dependencyId).forceDisabled) {
+        console.warn(`[addons] ${manifest.id}: зависимость ${dependencyId} принудительно отключена`);
+        continue;
+      }
+      if (!enabledIds.has(dependencyId)) {
+        enabledIds.add(dependencyId);
+        queue.push(dependencyId);
+        console.log(`[addons] ${dependencyId}: автоматически включена как зависимость ${manifest.id}`);
+      }
+    }
+  }
+  return enabledIds;
+}
+
+function orderEnabledAddons(manifests, enabledIds) {
+  const byId = new Map(manifests.map(manifest => [manifest.id, manifest]));
+  const ordered = [];
+  const visited = new Set();
+  const visiting = new Set();
+  const visit = manifest => {
+    if (visited.has(manifest.id)) return;
+    if (visiting.has(manifest.id)) {
+      console.warn(`[addons] Обнаружен цикл зависимостей около ${manifest.id}; порядок будет частично сохранён`);
+      return;
+    }
+    visiting.add(manifest.id);
+    for (const dependencyId of manifest.dependencies || []) {
+      const dependency = byId.get(dependencyId);
+      if (dependency && enabledIds.has(dependencyId)) visit(dependency);
+    }
+    visiting.delete(manifest.id);
+    visited.add(manifest.id);
+    ordered.push(manifest);
+  };
+  for (const manifest of manifests) if (enabledIds.has(manifest.id)) visit(manifest);
+  return ordered;
 }
 
 function readManifests(addonDir) {
@@ -49,11 +107,14 @@ function readManifests(addonDir) {
 }
 
 function getAddonManifests(addonDir, storedState) {
-  return readManifests(addonDir).map(m => ({
+  const manifests = readManifests(addonDir);
+  const enabledIds = resolveEnabledAddonIds(manifests, storedState);
+  return manifests.map(m => ({
     id: m.id,
     name: m.name,
     description: m.description || '',
-    enabled: storedState.hasOwnProperty(m.id) ? storedState[m.id] : !!m.enabledByDefault
+    forceDisabled: !!m.forceDisabled,
+    enabled: enabledIds.has(m.id)
   }));
 }
 
@@ -63,7 +124,7 @@ function injectAddon(webContents, addonId, addonDir, storedState = {}) {
     console.warn(`[addons] ${addonId}: манифест не найден`);
     return;
   }
-  const enabled = storedState.hasOwnProperty(manifest.id) ? storedState[manifest.id] : !!manifest.enabledByDefault;
+  const enabled = !manifest.forceDisabled && (storedState.hasOwnProperty(manifest.id) ? storedState[manifest.id] : !!manifest.enabledByDefault);
   console.log(`[addons] ${manifest.id}: frame injection enabled=${enabled}`);
   if (!enabled) return;
   try {
@@ -86,11 +147,10 @@ function injectAddon(webContents, addonId, addonDir, storedState = {}) {
 
 function injectEnabledAddons(webContents, storedState, addonDir) {
   const manifests = readManifests(addonDir);
-  for (const m of manifests) {
+  const enabledIds = resolveEnabledAddonIds(manifests, storedState);
+  for (const m of orderEnabledAddons(manifests, enabledIds)) {
     try {
-      const enabled = storedState.hasOwnProperty(m.id) ? storedState[m.id] : !!m.enabledByDefault;
-      console.log(`[addons] ${m.id}: enabled=${enabled} (stored=${storedState.hasOwnProperty(m.id)}, default=${!!m.enabledByDefault})`);
-      if (!enabled) continue;
+      console.log(`[addons] ${m.id}: enabled=true (stored=${storedState.hasOwnProperty(m.id)}, default=${!!m.enabledByDefault}, dependency=${!storedState.hasOwnProperty(m.id) && !m.enabledByDefault})`);
 
       if (m.style) {
         const cssPath = path.join(m._dir, m.style);
@@ -120,4 +180,4 @@ function injectEnabledAddons(webContents, storedState, addonDir) {
   }
 }
 
-module.exports = { getAddonManifests, injectEnabledAddons, injectAddon };
+module.exports = { getAddonManifests, injectEnabledAddons, injectAddon, resolveEnabledAddonIds, orderEnabledAddons };

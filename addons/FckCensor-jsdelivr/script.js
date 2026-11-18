@@ -1,12 +1,45 @@
 (function() {
     "use strict"
+    let bootAttempts = 0;
+    const MAX_BOOT_ATTEMPTS = 120;
+    function findWebpackChunkGlobal() {
+        try {
+            if (Array.isArray(window.webpackChunk_N_E)) return window.webpackChunk_N_E;
+            for (const key of Object.keys(window)) {
+                if (!/^webpackChunk/.test(key)) continue;
+                try { if (Array.isArray(window[key])) return window[key]; } catch (e) {}
+            }
+        } catch (e) {}
+        return null;
+    }
+    function retryBoot(reason) {
+        bootAttempts++;
+        window.__fckCensorStatus = { state: 'waiting', reason, attempts: bootAttempts };
+        if (bootAttempts >= MAX_BOOT_ATTEMPTS) {
+            window.__fckCensorStatus = { state: 'failed', reason, attempts: bootAttempts };
+            console.error("[FckCensor] Не удалось дождаться загрузки Яндекс Музыки:", reason);
+            return;
+        }
+        setTimeout(boot, 500);
+    }
+    function boot() {
+    const webpackGlobal = findWebpackChunkGlobal();
+    if (!webpackGlobal) {
+        retryBoot("не найден webpackChunk* массив; возможна смена webpack-имени на сайте");
+        return;
+    }
+    if (!window.pulsesyncApi) {
+        retryBoot("не найден pulsesyncApi; проверьте загрузку pulsesync-shim");
+        return;
+    }
+    if (window.__fckCensorInstalled) return;
+    window.__fckCensorInstalled = true;
     const ADDON_NAME = "FckCensor";
     function log(...args) {
         console.debug("[" + ADDON_NAME + "]", ...args);
     }
 
     /* == получение метода require из webpack == */
-    const webpackGlobal = window.webpackChunk_N_E;
     let appRequire = null;
 
     webpackGlobal.push([[Symbol("requireGetter__" + ADDON_NAME)],
@@ -18,7 +51,8 @@
     webpackGlobal.pop();
 
     if (!appRequire) {
-        console.error("Failed to get appRequire func");
+        window.__fckCensorInstalled = false;
+        retryBoot("webpack require не получен");
         return;
     }
 
@@ -39,9 +73,34 @@
         return null;
     }
 
-    const diModule = findModule("Dt", "P9", "Gr", "do");
+    function findDiModule() {
+        const exact = findModule("Dt", "P9", "Gr", "do");
+        if (typeof exact?.Dt?.prototype?.get === 'function') return exact;
+
+        // Export names are minified and change between Yandex deployments.
+        // The service key is a stronger fallback anchor than those names.
+        for (const id in appRequire.m) {
+            try {
+                if (!String(appRequire.m[id]).includes('GetFileInfoResource')) continue;
+                const exports = appRequire(id);
+                for (const candidate of Object.values(exports || {})) {
+                    if (typeof candidate === 'function'
+                        && typeof candidate.prototype?.get === 'function') {
+                        log('DI module found through GetFileInfoResource fallback; webpack id:', id);
+                        return { Dt: candidate };
+                    }
+                }
+            } catch (e) {
+                // Other module factories may not be safe to evaluate in isolation.
+            }
+        }
+        return null;
+    }
+
+    const diModule = findDiModule();
     if (!diModule?.Dt) {
-        console.error("Failed to find DI module. Wait for addon update!");
+        window.__fckCensorInstalled = false;
+        retryBoot("не найден DI-модуль GetFileInfoResource; возможно, сайт изменил внутренний API");
         return;
     }
 
@@ -55,7 +114,9 @@
         const result = originalDiGet.apply(this, arguments);
 
         if (!hooked) {
-            const gfir = this.shared.get("GetFileInfoResource");
+            let gfir = null;
+            try { gfir = this.shared?.get?.("GetFileInfoResource"); }
+            catch (e) { log("DI пока не предоставляет GetFileInfoResource:", e.message || e); }
 
             // На актуальной версии сайта нужный метод называется getFileInfo
             // (раньше был getLocalFileDownloadInfo), и первый попавшийся объект
@@ -64,6 +125,8 @@
                 hooked = true;
                 di.prototype.get = originalDiGet;
                 hookMethods(gfir);
+                window.__fckCensorStatus = { state: 'hooked', reason: 'GetFileInfoResource.getFileInfo перехвачен', attempts: bootAttempts };
+                log("Перехват GetFileInfoResource.getFileInfo установлен");
             }
         }
         
@@ -705,7 +768,8 @@
                             createItems(entity?.id)
                         }
                         else {
-                            const source = button.closest('.CommonTrack_root__i6shE');
+                            const source = button.closest('[class*="CommonTrack_root__"]')
+                                || button.closest('[data-intersection-property-id*="track_"]');
                             if (source) {
                                 const trackId = getTrackIdFromNode(source);
                                 if (trackId) {
@@ -717,14 +781,14 @@
                 }
             })
             
-            addReplacedMarks(mutation.target);
+            queueReplacedMarkScan(mutation.target);
         });
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
     /* === иконка подмены === */
     function createMark(node) {
-        const metaCtr = node.querySelector(".Meta_titleContainer__gDuXr:not(:has(.Meta_replacedMarkContainer))")
+        const metaCtr = node.querySelector('[class*="Meta_titleContainer__"]:not(:has(.Meta_replacedMarkContainer))')
         if (!metaCtr) return;
         const span = document.createElement("span");
 
@@ -780,28 +844,40 @@
     }
 
     function getTrackIdFromNode(node) {
-        let trackId = null;
-        const reactFiberProp = Object.keys(node).find(key => key.startsWith("__reactFiber"));
-        if (reactFiberProp) {
-            const fiber = node[reactFiberProp];
-            const children = fiber.memoizedProps.children
-            if (children) {
-                for (const child of children) {
-                    trackId = child?.props?.track?.id;
-                    if (trackId) break;
-                }
+        const intersectionNode = node.closest?.('[data-intersection-property-id*="track_"]') || node;
+        const intersection = intersectionNode.dataset?.intersectionPropertyId;
+        const intersectionId = intersection?.match(/track_(\d+)/)?.[1];
+        if (intersectionId) return intersectionId;
+
+        function findTrackId(value, depth = 0, seen = new Set()) {
+            if (!value || typeof value !== 'object' || depth > 6 || seen.has(value)) return null;
+            seen.add(value);
+            const directId = value.track?.id || value.props?.track?.id;
+            if (directId && /^\d+$/.test(String(directId))) return String(directId);
+            for (const key of Object.keys(value)) {
+                if (key === '_owner' || key === 'return' || key === 'child' || key === 'sibling'
+                    || key === 'stateNode' || key === 'ref' || key.startsWith('__')) continue;
+                try {
+                    const found = findTrackId(value[key], depth + 1, seen);
+                    if (found) return found;
+                } catch (e) {}
             }
+            return null;
         }
 
-        if (!trackId) {
-            const intersection = node.dataset.intersectionPropertyId;
-            trackId = intersection?.match(/track_(\d+)/)?.[1];
+        for (let current = node, levels = 0; current && levels < 5; current = current.parentElement, levels++) {
+            const fiberKey = Object.keys(current).find(key => key.startsWith('__reactFiber'));
+            let fiber = fiberKey ? current[fiberKey] : null;
+            for (let depth = 0; fiber && depth < 6; depth++, fiber = fiber.return) {
+                const found = findTrackId(fiber.memoizedProps);
+                if (found) return found;
+            }
         }
-        return trackId;
+        return null;
     }
 
     function addReplacedMarks(node = document.body) {
-        const trackContainers = node.querySelectorAll('.CommonTrack_root__i6shE')
+        const trackContainers = node.querySelectorAll('[class*="CommonTrack_root__"], [data-intersection-property-id*="track_"]')
         trackContainers.forEach(ctr => {
             const trackId = getTrackIdFromNode(ctr);
             if (trackId) {
@@ -839,10 +915,31 @@
         }
     }
 
+    let markScanQueued = false;
+    const pendingMarkScanRoots = new Set();
+    function queueReplacedMarkScan(root) {
+        if (root?.querySelectorAll) pendingMarkScanRoots.add(root);
+        if (markScanQueued) return;
+        markScanQueued = true;
+        requestAnimationFrame(() => {
+            markScanQueued = false;
+            const candidates = [...pendingMarkScanRoots];
+            pendingMarkScanRoots.clear();
+            const roots = candidates.filter(candidate =>
+                !candidates.some(other => other !== candidate && other.contains?.(candidate))
+            );
+            roots.forEach(rootNode => addReplacedMarks(rootNode));
+        });
+    }
+
     window.pulsesyncApi._waitForPlayer(player => {
         updatePlayerbarReplacedMark()
         player.state?.queueState?.currentEntity?.onChange(() => updatePlayerbarReplacedMark())
     })
 
     addReplacedMarks();
+    window.__fckCensorStatus = { state: 'running', reason: 'bootstrap завершён, ожидание DI вызова', attempts: bootAttempts };
+    console.log("[FckCensor] успешно запущен после загрузки страницы");
+    }
+    boot();
 })();

@@ -2,7 +2,8 @@
     "id": "78d083c5-0510-4c41-b3de-41aab30a9fc5",
     "name": "FckCensor",
     "description": "Подменивает заблюренные треки автоматически и позволяет это делать вручную через контекстное меню",
-    "version": "1.4.3",
+    "version": "1.4.4-tunerift",
+    "enabledByDefault": true,
     "author": "Hazzz895",
     "type": "script",
     "image": "image.png",
@@ -13,7 +14,9 @@
     "tags": [
         "Script"
     ],
-    "dependencies": [],
+    "dependencies": [
+        "pulsesync-shim"
+    ],
     "conflictsWith": [],
     "allowedUrls": [
         "https://github.com/",

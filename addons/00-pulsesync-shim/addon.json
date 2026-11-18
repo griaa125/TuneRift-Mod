@@ -1,7 +1,7 @@
 {
   "id": "pulsesync-shim",
   "name": "Совместимость с PulseSync-аддонами (эксперимент)",
-  "description": "Даёт минимальную реализацию window.pulsesyncApi, которую используют некоторые PulseSync-аддоны. Включай ТОЛЬКО если ставишь настоящие PulseSync-аддоны — без них не нужен",
+  "description": "Даёт минимальную реализацию window.pulsesyncApi. Автоматически включается как зависимость FckCensor; отдельно управлять не нужно.",
   "enabledByDefault": false,
   "script": "index.js"
 }

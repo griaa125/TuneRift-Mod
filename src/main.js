@@ -1,7 +1,9 @@
-const { app, BrowserWindow, session, ipcMain, Menu, shell, nativeImage, webFrameMain } = require('electron');
+const { app, BrowserWindow, session, ipcMain, Menu, shell, nativeImage, webFrameMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const Store = require('electron-store');
+const { autoUpdater } = require('electron-updater');
 const { initDiscordRPC, updateActivity, clearActivity, setDiscordEnabled } = require('./discordRPC');
 const { loadAddons, getAddonManifests, injectEnabledAddons, injectAddon } = require('./addonLoader');
 
@@ -21,6 +23,10 @@ const store = new Store({
     discordEnabled: true,
     newDesign: false,
     loadExtensions: true,
+    stationAudioEnabled: false,
+    stationAutoConnect: false,
+    stationDeviceHint: 'station,yandex,alice,яндекс',
+    stationMonitorVolume: 0.02,
     windowBounds: null   // { width, height, x, y } — сохранённый размер/позиция окна
   }
 });
@@ -36,6 +42,141 @@ const APP_ICON_MAC_PATH = path.join(__dirname, '..', 'build', 'icon.icns');
 let mainWindow;
 let settingsWindow;
 let lastYnisonTimeline = null;
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) {
+    console.log('[updater] Проверка пропущена в режиме разработки');
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => console.log('[updater] Проверяю обновления...'));
+  autoUpdater.on('update-available', (info) => console.log(`[updater] Найдена версия ${info.version}, начинаю загрузку`));
+  autoUpdater.on('download-progress', (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(Math.max(0, Math.min(1, progress.percent / 100)));
+    console.log(`[updater] Загрузка: ${progress.percent.toFixed(1)}%`);
+  });
+  autoUpdater.on('update-not-available', () => console.log('[updater] Установлена последняя версия'));
+  autoUpdater.on('error', (error) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(-1);
+    console.warn('[updater] Ошибка проверки/загрузки:', error.message || error);
+  });
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setProgressBar(-1);
+    const result = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Доступно обновление TuneRift',
+      message: `Версия ${info.version} скачана и готова к установке.`,
+      detail: 'Перезапустить приложение сейчас или установить обновление при следующем запуске?',
+      buttons: ['Перезапустить сейчас', 'Позже'],
+      defaultId: 0,
+      cancelId: 1
+    });
+    if (result.response === 0) autoUpdater.quitAndInstall(false, true);
+  });
+
+  setTimeout(() => autoUpdater.checkForUpdates().catch((error) => {
+    console.warn('[updater] Не удалось проверить обновления:', error.message || error);
+  }), 5000);
+}
+
+function broadcastPlayerSettings() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('tunerift:player-settings', {
+    stationAudioEnabled: Boolean(store.get('stationAudioEnabled') || store.get('stationAutoConnect')),
+    stationAutoConnect: Boolean(store.get('stationAutoConnect')),
+    stationDeviceHint: String(store.get('stationDeviceHint') || ''),
+    stationMonitorVolume: Number(store.get('stationMonitorVolume'))
+  });
+}
+
+function getStationHints() {
+  return String(store.get('stationDeviceHint') || 'station,yandex,alice,яндекс')
+    .split(',').map((part) => part.trim().toLowerCase()).filter(Boolean);
+}
+
+function matchesStation(text) {
+  const lower = String(text || '').toLowerCase();
+  return getStationHints().some((hint) => lower.includes(hint));
+}
+
+function notifyStationConnectionError(message) {
+  if (!mainWindow || mainWindow.isDestroyed() || !store.get('stationAutoConnect')) return;
+  mainWindow.webContents.send('tunerift:station-connect-error', { message });
+}
+
+function autoConnectStation() {
+  if (!store.get('stationAutoConnect')) return;
+
+  if (process.platform === 'darwin') {
+    const blueutil = ['/opt/homebrew/bin/blueutil', '/usr/local/bin/blueutil', 'blueutil']
+      .find((candidate) => candidate === 'blueutil' || fs.existsSync(candidate));
+    if (!blueutil) {
+      notifyStationConnectionError('На macOS не найден blueutil. Установите его командой: brew install blueutil.');
+      return;
+    }
+    execFile(blueutil, ['--paired', '--format', 'json'], (error, stdout = '') => {
+      let devices = [];
+      try {
+        const parsed = JSON.parse(stdout);
+        devices = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.devices) ? parsed.devices : []);
+      } catch {
+        devices = String(stdout).split('\n').map((line) => ({ raw: line, name: line }));
+      }
+      const device = devices.find((item) => matchesStation(`${item.name || ''} ${item.address || ''} ${item.raw || ''}`));
+      const address = device?.address || device?.mac || String(device?.raw || '').match(/(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}/i)?.[0];
+      if (error || !address) {
+        const message = 'Не удалось автоматически подключить Станцию на macOS. Убедитесь, что она сопряжена и подключена в Bluetooth.';
+        console.warn(`[station-audio] ${message}`);
+        notifyStationConnectionError(message);
+        return;
+      }
+      execFile(blueutil, ['--connect', address], (connectError) => {
+        if (connectError) {
+          console.warn('[station-audio] macOS: не удалось подключить Станцию:', connectError.message);
+          notifyStationConnectionError('Не удалось подключить Станцию по Bluetooth на macOS. Проверьте, что устройство доступно.');
+        } else {
+          execFile(blueutil, ['--wait-connect', address, '10'], (waitError) => {
+            if (waitError) notifyStationConnectionError('macOS не подтвердил подключение Станции по Bluetooth.');
+            else console.log(`[station-audio] macOS: Станция подключена (${address})`);
+          });
+        }
+      });
+    });
+    return;
+  }
+
+  if (process.platform === 'linux') {
+    execFile('bluetoothctl', ['devices'], (error, stdout = '') => {
+      const line = String(stdout).split('\n').find((item) => matchesStation(item));
+      const address = line?.match(/(?:[0-9a-f]{2}:){5}[0-9a-f]{2}/i)?.[0];
+      if (error || !address) {
+        const message = 'Не удалось автоматически найти Станцию на Linux. Убедитесь, что bluetoothctl видит сопряжённое устройство.';
+        console.warn(`[station-audio] ${message}`);
+        notifyStationConnectionError(message);
+        return;
+      }
+      execFile('bluetoothctl', ['connect', address], (connectError, connectOutput = '') => {
+        if (connectError) {
+          console.warn('[station-audio] Linux: не удалось подключить Станцию:', connectOutput || connectError.message);
+          notifyStationConnectionError('Не удалось подключить Станцию по Bluetooth на Linux. Проверьте состояние Bluetooth.');
+        }
+        else console.log(`[station-audio] Linux: Станция подключена (${address})`);
+      });
+    });
+    return;
+  }
+
+  // Windows не предоставляет штатной CLI-команды для подключения A2DP.
+  // Открываем системную панель: после подключения Station Mode уже работает
+  // одинаково через Media Session и выбранный audiooutput.
+  if (process.platform === 'win32') {
+    const message = 'Windows не смог автоматически подключить Станцию. Подключите её вручную в системном Bluetooth — TuneRift подхватит её после подключения.';
+    console.warn(`[station-audio] ${message}`);
+    notifyStationConnectionError(message);
+  }
+}
 
 function hasValidTimeline(data) {
   const durationMs = Number(data?.durationMs);
@@ -83,8 +224,10 @@ function createMainWindow() {
     minWidth: 900,
     minHeight: 600,
     autoHideMenuBar: true,
-    titleBarStyle: 'hiddenInset',   // скрывает заголовок, оставляя трафлайты поверх контента
-    trafficLightPosition: { x: 14, y: 10 },
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 10 } } : {}),
+    ...(process.platform !== 'darwin' ? { titleBarOverlay: { color: '#000000', symbolColor: '#ffffff', height: 32 } } : {}),
+    title: 'Яндекс Музыка',
     backgroundColor: '#000000',
     icon: APP_ICON_PATH,
     webPreferences: {
@@ -112,6 +255,10 @@ function createMainWindow() {
   });
 
   mainWindow.loadURL('https://music.yandex.ru');
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault();
+    mainWindow.setTitle('Яндекс Музыка');
+  });
 
   // Раньше вызывали инъекцию и на dom-ready, и на did-finish-load "для надёжности" —
   // но это заставляет скрипты аддонов (например FckCensor) выполняться ДВАЖДЫ за
@@ -137,7 +284,7 @@ function createMainWindow() {
       const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
       const url = frame?.url || '';
       if (!frame || !String(url).startsWith('https://yandex.ru/user-id')) return;
-      console.log('[main] Account iframe detected, injecting TuneRift Mod Menu:', url);
+      console.log('[main] Account iframe detected, injecting Yandex Music menu:', url);
       injectAddon(frame, 'tunerift-account-menu', ADDON_DIR, store.get('addons'));
     } catch (err) {
       console.error('[main] Account iframe injection failed:', err.message || err);
@@ -175,9 +322,8 @@ function createSettingsWindow() {
 function buildMenu() {
   const menu = Menu.buildFromTemplate([
     {
-      label: 'Меню',
+      label: 'Яндекс Музыка',
       submenu: [
-        { label: 'Настройки', accelerator: 'CmdOrCtrl+,', click: () => createSettingsWindow() },
         { label: 'Перезагрузить', click: () => mainWindow.reload() },
         { label: 'DevTools', accelerator: 'CmdOrCtrl+Alt+I', click: () => mainWindow.webContents.toggleDevTools() },
         { type: 'separator' },
@@ -235,23 +381,35 @@ async function loadUnpackedExtensions() {
 // --- IPC: настройки аддонов ---
 ipcMain.handle('addons:list', () => getAddonManifests(ADDON_DIR, store.get('addons')));
 ipcMain.handle('addons:toggle', (e, id, enabled) => {
-  const addons = store.get('addons');
-  addons[id] = enabled;
+  const addons = { ...store.get('addons') };
+  addons[id] = Boolean(enabled);
   store.set('addons', addons);
-  if (mainWindow) mainWindow.reload(); // проще всего применить — перезагрузить страницу
+  if (mainWindow) mainWindow.reload(); // проще всего применить — перезагрузка страницы
   return true;
 });
 
 ipcMain.handle('settings:get', () => ({
   discordEnabled: store.get('discordEnabled'),
   newDesign: store.get('newDesign'),
-  loadExtensions: store.get('loadExtensions')
+  loadExtensions: store.get('loadExtensions'),
+  stationAudioEnabled: store.get('stationAudioEnabled'),
+  stationAutoConnect: store.get('stationAutoConnect'),
+  stationDeviceHint: store.get('stationDeviceHint'),
+  stationMonitorVolume: store.get('stationMonitorVolume')
 }));
 ipcMain.handle('settings:set', (e, key, value) => {
   store.set(key, value);
   if (key === 'discordEnabled') setDiscordEnabled(value);
   if (key === 'newDesign' && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.executeJavaScript(`localStorage.setItem('tunerift:use-new-design', ${Boolean(value)} ? 'true' : 'false'); location.reload();`, true).catch(err => console.error('[main] new design apply failed:', err.message || err));
+  }
+  if (key === 'stationAudioEnabled' || key === 'stationAutoConnect' || key === 'stationDeviceHint' || key === 'stationMonitorVolume') {
+    mainWindow?.webContents.send('tunerift:station-audio-settings', {
+      enabled: Boolean(store.get('stationAudioEnabled') || store.get('stationAutoConnect')),
+      stationAutoConnect: Boolean(store.get('stationAutoConnect')),
+      deviceHint: String(store.get('stationDeviceHint') || ''),
+      monitorVolume: Number(store.get('stationMonitorVolume'))
+    });
   }
   return true;
 });
@@ -356,7 +514,13 @@ app.whenReady().then(async () => {
 
   await loadUnpackedExtensions();
   createMainWindow();
+  broadcastPlayerSettings();
+  autoConnectStation();
   initDiscordRPC(store.get('discordEnabled'));
+  setupAutoUpdater();
+});
+
+app.on('will-quit', () => {
 });
 
 app.on('window-all-closed', () => {

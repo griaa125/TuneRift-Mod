@@ -29,6 +29,22 @@
     <div class="label"><div class="name">Загружать Chrome-расширения</div><div class="desc">Требует перезапуск приложения</div></div>
     <label class="switch"><input type="checkbox" id="loadExtensions"><span class="slider"></span></label>
   </div>
+  <div class="row">
+    <div class="label"><div class="name">Экспериментальный режим Станции</div><div class="desc">Дублировать настоящий трек на Bluetooth-выход Станции. Основной звук остаётся на ПК.</div></div>
+    <label class="switch"><input type="checkbox" id="stationAudioEnabled"><span class="slider"></span></label>
+  </div>
+  <div class="row">
+    <div class="label"><div class="name">Управление треками с Алисы</div><div class="desc">Автовключать Station Control Mode. macOS: blueutil, Linux: bluetoothctl, Windows: системное окно Bluetooth.</div></div>
+    <label class="switch"><input type="checkbox" id="stationAutoConnect"><span class="slider"></span></label>
+  </div>
+  <div class="row" style="display:block">
+    <div class="label"><div class="name">Как найти Станцию</div><div class="desc">Части имени Bluetooth-устройства через запятую</div></div>
+    <input id="stationDeviceHint" style="width:100%;box-sizing:border-box;margin-top:8px;background:#222;color:#eee;border:1px solid #444;border-radius:5px;padding:7px" />
+  </div>
+  <div class="row" style="display:block">
+    <div class="label"><div class="name">Громкость копии на Станции</div><div class="desc">Тихая, но не нулевая копия настоящей музыки: <span id="stationVolumeValue">2%</span></div></div>
+    <input id="stationMonitorVolume" type="range" min="0.001" max="0.2" step="0.001" style="width:100%;margin-top:8px" />
+  </div>
 
   <h2>Аддоны (PulseSync)</h2>
   <div id="addons"></div>
@@ -39,9 +55,21 @@ async function init() {
   const settings = await window.api.getSettings();
   document.getElementById('discordEnabled').checked = settings.discordEnabled;
   document.getElementById('loadExtensions').checked = settings.loadExtensions;
+  document.getElementById('stationAudioEnabled').checked = settings.stationAudioEnabled;
+  document.getElementById('stationAutoConnect').checked = Boolean(settings.stationAutoConnect);
+  document.getElementById('stationDeviceHint').value = settings.stationDeviceHint || 'station,yandex,alice,яндекс';
+  document.getElementById('stationMonitorVolume').value = settings.stationMonitorVolume || 0.02;
+  document.getElementById('stationVolumeValue').textContent = `${Math.round((settings.stationMonitorVolume || 0.02) * 100)}%`;
 
   document.getElementById('discordEnabled').onchange = e => window.api.setSetting('discordEnabled', e.target.checked);
   document.getElementById('loadExtensions').onchange = e => window.api.setSetting('loadExtensions', e.target.checked);
+  document.getElementById('stationAudioEnabled').onchange = e => window.api.setSetting('stationAudioEnabled', e.target.checked);
+  document.getElementById('stationAutoConnect').onchange = e => window.api.setSetting('stationAutoConnect', e.target.checked);
+  document.getElementById('stationDeviceHint').onchange = e => window.api.setSetting('stationDeviceHint', e.target.value);
+  document.getElementById('stationMonitorVolume').oninput = e => {
+    document.getElementById('stationVolumeValue').textContent = `${Math.round(Number(e.target.value) * 100)}%`;
+  };
+  document.getElementById('stationMonitorVolume').onchange = e => window.api.setSetting('stationMonitorVolume', Number(e.target.value));
 
   const addons = await window.api.listAddons();
   const container = document.getElementById('addons');
