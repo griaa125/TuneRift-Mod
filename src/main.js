@@ -35,9 +35,9 @@ const EXT_DIR = app.isPackaged
   ? path.join(process.resourcesPath, 'app.asar.unpacked', 'extensions')
   : path.join(__dirname, '..', 'extensions');
 const ADDON_DIR = path.join(__dirname, '..', 'addons');
-// PNG — для окон и панели задач; ICNS — нативный формат значка Dock в macOS.
-const APP_ICON_PATH = path.join(__dirname, '..', 'build', 'ym_logo.png');
-const APP_ICON_MAC_PATH = path.join(__dirname, '..', 'build', 'icon.icns');
+// Runtime-иконки находятся в src/icons, который включается в app.asar.
+const APP_ICON_PATH = path.join(__dirname, 'icons', process.platform === 'win32' ? 'ym_logo.ico' : 'ym_logo.png');
+const APP_ICON_MAC_PATH = path.join(__dirname, 'icons', 'icon.icns');
 
 let mainWindow;
 let settingsWindow;
@@ -226,7 +226,11 @@ function createMainWindow() {
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 14, y: 10 } } : {}),
-    ...(process.platform !== 'darwin' ? { titleBarOverlay: { color: '#000000', symbolColor: '#ffffff', height: 32 } } : {}),
+    ...(process.platform === 'win32'
+      ? { titleBarOverlay: { color: 'rgba(0, 0, 0, 0)', symbolColor: '#111111', height: 40 } }
+      : process.platform === 'linux'
+        ? { titleBarOverlay: { color: '#000000', symbolColor: '#ffffff', height: 32 } }
+        : {}),
     title: 'Яндекс Музыка',
     backgroundColor: '#000000',
     icon: APP_ICON_PATH,
